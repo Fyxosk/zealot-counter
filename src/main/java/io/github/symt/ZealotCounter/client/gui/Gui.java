@@ -1,6 +1,6 @@
-package io.github.symt.client.gui;
+package io.github.symt.ZealotCounter.client.gui;
 
-import io.github.symt.ZealotCounter;
+import io.github.symt.ZealotCounter.ZealotCounter;
 import java.awt.Color;
 import java.io.IOException;
 import net.minecraft.client.Minecraft;
@@ -62,9 +62,7 @@ public class Gui extends GuiScreen {
           ZealotCounter.instance.zealotCount = 0;
           ZealotCounter.instance.summoningEyes = 0;
           ZealotCounter.instance.sinceLastEye = 0;
-          ZealotCounter.instance
-              .saveSetup(ZealotCounter.instance.currentSetup.split(" ")[0],
-                  ZealotCounter.instance.currentSetup.split(" ")[1], 0, 0, 0);
+          ZealotCounter.instance.saveZealotInfo();
         }
         break;
       case 2:
@@ -75,7 +73,7 @@ public class Gui extends GuiScreen {
         // Color
         Minecraft.getMinecraft().thePlayer.addChatMessage(new ChatComponentText(
             EnumChatFormatting.RED
-                + "The color spinner isn't done yet and will be out in the next update. In the meantime, use "
+                + "The color spinner isn't done yet and will be out soon. In the meantime, use "
                 + EnumChatFormatting.DARK_RED + "/zc color (hex color)"));
         Minecraft.getMinecraft().thePlayer.addChatMessage(new ChatComponentText(
             EnumChatFormatting.RED + "Example: " + EnumChatFormatting.DARK_RED
@@ -89,9 +87,7 @@ public class Gui extends GuiScreen {
               EnumChatFormatting.RED
                   + "You are not on a known profile. Please join SkyBlock so the mod can detect which profile you're using."));
         } else {
-          ZealotCounter.instance.saveSetup(ZealotCounter.instance.currentSetup.split(" ")[0],
-              ZealotCounter.instance.currentSetup.split(" ")[1], ZealotCounter.instance.zealotCount,
-              ZealotCounter.instance.summoningEyes, ZealotCounter.instance.sinceLastEye);
+          ZealotCounter.instance.saveZealotInfo();
         }
         break;
       case 5:

@@ -1,4 +1,4 @@
-package io.github.symt.client.gui;
+package io.github.symt.ZealotCounter.client.gui;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiButton;

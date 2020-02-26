@@ -1,31 +1,34 @@
-package io.github.symt;
+package io.github.symt.ZealotCounter;
 
-import io.github.symt.client.gui.Gui;
+import io.github.symt.ZealotCounter.client.gui.Gui;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.text.DecimalFormat;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.FontRenderer;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.item.EntityArmorStand;
 import net.minecraft.entity.monster.EntityEnderman;
 import net.minecraft.event.ClickEvent;
 import net.minecraft.event.ClickEvent.Action;
+import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.ChatComponentTranslation;
 import net.minecraft.util.EnumChatFormatting;
-import net.minecraft.util.MovingObjectPosition;
-import net.minecraft.util.MovingObjectPosition.MovingObjectType;
 import net.minecraft.util.StringUtils;
+import net.minecraftforge.client.GuiIngameForge;
 import net.minecraftforge.client.event.ClientChatReceivedEvent;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.player.AttackEntityEvent;
-import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import net.minecraftforge.fml.common.network.FMLNetworkEvent;
@@ -37,62 +40,67 @@ public class EventHandler {
   public StopWatch perHourTimer = new StopWatch();
   private boolean firstJoin = true;
   private FontRenderer renderer = Minecraft.getMinecraft().fontRendererObj;
-  private int attackedEntity = -1;
-  private int prevEntity = -1;
   private int tick = 1;
   private boolean tempSuspend = false;
   private ZealotCounter zealotCounter;
+  private Set<Entity> countedEndermen = new HashSet<>();
 
   EventHandler(ZealotCounter zealotCounter) {
     this.zealotCounter = zealotCounter;
   }
 
+  /*
+   * The following two events (onMobDeath and onHit) are *mostly* courtesy of BiscuitDevelopment & SkyblockAddons.
+   */
   @SubscribeEvent
-  public void onMobDeath(LivingDeathEvent event) {
-    MovingObjectPosition objectMouseOver = Minecraft.getMinecraft().objectMouseOver;
-    if (((objectMouseOver != null && objectMouseOver.typeOfHit == MovingObjectType.ENTITY
-        && objectMouseOver.entityHit.getEntityId() == event.entity.getEntityId())
-        || attackedEntity == event.entity.getEntityId())
-        && ((event.entity.getName().length() > 2 && event.entity.getName().substring(2)
-        .equals("Enderman"))
-        || event.entity instanceof EntityEnderman)
-        && prevEntity != event.entity.getEntityId()
-        && zealotCounter.dragonsNest) {
-      prevEntity = event.entity.getEntityId();
-      if (perHourTimer.isStarted() && !perHourTimer.isSuspended()) {
-        zealotCounter.zealotSession++;
+  public void onMobDeath(LivingDeathEvent e) {
+    if (e.entity instanceof EntityEnderman) {
+      if (countedEndermen.remove(e.entity)) {
+        if (perHourTimer.isStarted() && !perHourTimer.isSuspended()) {
+          zealotCounter.zealotSession++;
+        }
+        zealotCounter.zealotCount++;
+        zealotCounter.sinceLastEye++;
       }
-      zealotCounter.zealotCount++;
-      zealotCounter.sinceLastEye++;
     }
   }
 
   @SubscribeEvent
-  public void onAttack(AttackEntityEvent event) {
-    if (event.entity.getEntityId() == Minecraft.getMinecraft().thePlayer.getEntityId() &&
-        ((event.target.getName().length() > 2 && event.target.getName().substring(2)
-            .equals("Enderman"))
-            || event.target instanceof EntityEnderman) && zealotCounter.dragonsNest) {
-      attackedEntity = event.target.getEntityId();
+  public void onHit(AttackEntityEvent e) {
+    if (e.target instanceof EntityEnderman) {
+      List<EntityArmorStand> stands = Minecraft.getMinecraft().theWorld
+          .getEntitiesWithinAABB(EntityArmorStand.class,
+              new AxisAlignedBB(e.target.posX - 1, e.target.posY, e.target.posZ - 1,
+                  e.target.posX + 1, e.target.posY + 5, e.target.posZ + 1));
+      if (stands.isEmpty()) {
+        return;
+      }
+
+      EntityArmorStand armorStand = stands.get(0);
+      if (armorStand.hasCustomName() && armorStand.getCustomNameTag().contains("Zealot")) {
+        countedEndermen.add(e.target);
+      }
     }
   }
 
-  @SubscribeEvent(priority = EventPriority.HIGHEST)
+  @SubscribeEvent
   public void onChatMessageReceived(ClientChatReceivedEvent e) {
-    if (stripString(e.message.getUnformattedText())
+    if (Utils.stripString(e.message.getUnformattedText())
         .equals("A special Zealot has spawned nearby!")) {
       zealotCounter.summoningEyes++;
       zealotCounter.sinceLastEye = 0;
-    } else if (stripString(e.message.getUnformattedText())
+    } else if (Utils.stripString(e.message.getUnformattedText())
         .startsWith("You are playing on profile: ")) {
-      zealotCounter.currentSetup =
-          Minecraft.getMinecraft().thePlayer.getUniqueID() + " " + stripString(
-              e.message.getUnformattedText())
-              .split(" ")[5];
+      String nextSetup = Minecraft.getMinecraft().thePlayer.getUniqueID() + ":" + Utils.stripString(
+          e.message.getUnformattedText())
+          .split(" ")[5];
+      if (!nextSetup.equalsIgnoreCase(zealotCounter.currentSetup)) {
+        zealotCounter.updateInfoWithCurrentSetup(zealotCounter.currentSetup.split(":"), nextSetup);
+      }
     }
   }
 
-  @SubscribeEvent(priority = EventPriority.HIGHEST)
+  @SubscribeEvent
   public void onTick(TickEvent.ClientTickEvent e) {
     if (e.phase == TickEvent.Phase.START) {
       tick++;
@@ -100,19 +108,15 @@ public class EventHandler {
           && Minecraft.getMinecraft().thePlayer != null) {
         if (Minecraft.getMinecraft().theWorld.getScoreboard().getObjectiveInDisplaySlot(1)
             != null) {
-          zealotCounter.isInSkyblock = (stripString(StringUtils.stripControlCodes(
+          zealotCounter.isInSkyblock = (Utils.stripString(StringUtils.stripControlCodes(
               Minecraft.getMinecraft().theWorld.getScoreboard().getObjectiveInDisplaySlot(1)
                   .getDisplayName())).startsWith("SKYBLOCK"));
         }
-        if (!zealotCounter.lastSetup.equals(zealotCounter.currentSetup)) {
-          zealotCounter.updateInfoWithCurrentSetup(zealotCounter.currentSetup.split(" ")[0],
-              zealotCounter.currentSetup.split(" ")[1]);
-        }
         if (zealotCounter.loggedIn && zealotCounter.isInSkyblock) {
-          List<String> scoreboard = zealotCounter.getSidebarLines();
+          List<String> scoreboard = Utils.getSidebarLines();
           boolean found = false;
           for (String s : scoreboard) {
-            String validated = stripString(s);
+            String validated = Utils.stripString(s);
             if (validated.contains("Dragon's Nest")) {
               if (tempSuspend) {
                 tempSuspend = false;
@@ -194,6 +198,7 @@ public class EventHandler {
                   Minecraft.getMinecraft().thePlayer
                       .addChatMessage(new ChatComponentTranslation(""));
                   if (latestTag[i].compareTo(currentTag[i]) <= -1) {
+                    ZealotCounter.preRelease = true;
                     Minecraft.getMinecraft().thePlayer
                         .addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN +
                             "You are currently on a pre-release build of ZealotCounter. Please report any bugs that you may come across"));
@@ -234,30 +239,20 @@ public class EventHandler {
   }
 
   @SubscribeEvent
-  public void renderLabymodOverlay(RenderGameOverlayEvent event) {
+  public void onRenderLabymod(RenderGameOverlayEvent event) {
     if (event.type == null && isUsingLabymod() && zealotCounter.isInSkyblock) {
       renderStats(false);
     }
   }
 
   @SubscribeEvent
-  public void renderGameOverlayEvent(RenderGameOverlayEvent.Post event) {
-    if ((event.type == RenderGameOverlayEvent.ElementType.EXPERIENCE
-        || event.type == RenderGameOverlayEvent.ElementType.JUMPBAR) && zealotCounter.isInSkyblock
-        && !isUsingLabymod()) {
-      renderStats(false);
-    }
-  }
-
-  private String stripString(String s) {
-    char[] nonValidatedString = StringUtils.stripControlCodes(s).toCharArray();
-    StringBuilder validated = new StringBuilder();
-    for (char a : nonValidatedString) {
-      if ((int) a < 127 && (int) a > 20) {
-        validated.append(a);
+  public void onRenderRegular(RenderGameOverlayEvent.Post e) {
+    if ((!isUsingLabymod() || Minecraft.getMinecraft().ingameGUI instanceof GuiIngameForge)) {
+      if (e.type == RenderGameOverlayEvent.ElementType.EXPERIENCE
+          || e.type == RenderGameOverlayEvent.ElementType.JUMPBAR) {
+        renderStats(false);
       }
     }
-    return validated.toString();
   }
 
   private boolean isUsingLabymod() {
@@ -265,7 +260,8 @@ public class EventHandler {
   }
 
   public void renderStats(boolean forcedRender) {
-    if (forcedRender || (zealotCounter.toggled && zealotCounter.dragonsNest && !zealotCounter.currentSetup
+    if (forcedRender || (zealotCounter.toggled && zealotCounter.dragonsNest
+        && !zealotCounter.currentSetup
         .equals(""))) {
       String zealotEye =
           "Zealots/Eye: " + ((zealotCounter.summoningEyes == 0) ? zealotCounter.zealotCount
@@ -276,8 +272,6 @@ public class EventHandler {
       String lastEye = "Zealots since last eye: " + zealotCounter.sinceLastEye;
       String zealotsPerHour = "Zealots/Hour: " + Math.round(zealotCounter.zealotSession / (
           ((perHourTimer.getTime() == 0) ? 1 : perHourTimer.getTime()) / 3600000d));
-      String chanceOfEye =
-          "Current drop rate: " + (1 + Math.floor(zealotCounter.zealotCount / 420d)) + "/420";
       String longest =
           (lastEye.length() > zealot.length() && lastEye.length() > zealotEye.length()) ? lastEye
               : (zealot.length() > zealotEye.length()) ? zealot : zealotEye;
