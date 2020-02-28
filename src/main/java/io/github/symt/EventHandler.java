@@ -81,6 +81,8 @@ public class EventHandler {
   public void onChatMessageReceived(ClientChatReceivedEvent e) {
     if (stripString(e.message.getUnformattedText())
         .equals("A special Zealot has spawned nearby!")) {
+      Minecraft.getMinecraft().thePlayer
+        .addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "It took " + EnumChatFormatting.LIGHT_PURPLE + zealotCounter.sinceLastEye + EnumChatFormatting.GREEN + " Zealots"));
       zealotCounter.summoningEyes++;
       zealotCounter.sinceLastEye = 0;
     } else if (stripString(e.message.getUnformattedText())
